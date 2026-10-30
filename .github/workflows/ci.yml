@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  esp32:
+    name: Build example for ESP32
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install esphome
+      - name: Prepare the example against this checkout
+        run: |
+          mkdir -p build
+          sed -e 's|source: github://tomaszsluszniak/esphome-thessla-airpack@.*|source:\n      type: local\n      path: ../components|' \
+              example/airpack.yaml > build/airpack.yaml
+          printf 'wifi_ssid: "ci"\nwifi_password: "ci-password"\nairpack_api_key: "%s"\n' "$(openssl rand -base64 32)" > build/secrets.yaml
+      - run: esphome config build/airpack.yaml
+      - run: esphome compile build/airpack.yaml
+
+  host:
+    name: End-to-end test with the simulator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install esphome
+      - name: Build and run the host firmware against the simulator
+        run: |
+          cd tests
+          python3 ../tools/airpack_simulator.py /tmp/ttyAIRPACK > sim.log 2>&1 &
+          sleep 1
+          esphome compile host_e2e.yaml
+          PROGRAM=$(find .esphome/build/airpack-host-test -type f -name program -perm -u+x | head -1)
+          timeout 70 script -qfc "$PROGRAM" firmware.log > /dev/null 2>&1 || true
+          cat sim.log
+          grep -q "TESTS DONE" firmware.log
+          grep -q "FILTER REPLACED: supply" sim.log
+          grep -q "BLOCK 4400: temporary mode" sim.log

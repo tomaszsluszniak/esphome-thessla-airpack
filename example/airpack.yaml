@@ -1,0 +1,211 @@
+# Thessla Green AirPack 4 – bramka ESP32 / RS485
+#
+# Przed pierwszym uruchomieniem:
+#  - ustaw baud_rate / parity zgodnie z ustawieniami Modbus w centrali
+#    (fabrycznie 9600 8N1, adres 10),
+#  - jeśli centrala ma inny adres Modbus, zmień "address" niżej.
+
+substitutions:
+  name: airpack4
+  friendly_name: Thesslagreen Airpack 4
+  baud_rate: "9600"
+  parity: NONE
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  project:
+    name: thessla.airpack
+    version: "1.0.0"
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+external_components:
+  - source: github://tomaszsluszniak/esphome-thessla-airpack@v1.0.0
+    components: [thessla_airpack]
+
+logger:
+  level: INFO
+
+api:
+  encryption:
+    key: !secret airpack_api_key
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: ${name} fallback
+
+captive_portal:
+
+time:
+  - platform: homeassistant
+    id: ha_time
+    timezone: Europe/Warsaw
+
+status_led:
+  pin: GPIO25
+
+uart:
+  id: rs485
+  tx_pin: GPIO17
+  rx_pin: GPIO16
+  baud_rate: ${baud_rate}
+  parity: ${parity}
+  data_bits: 8
+  stop_bits: 1
+
+modbus:
+  id: modbus_bus
+  uart_id: rs485
+  flow_control_pin: GPIO4   # DE/RE transceivera RS485
+  send_wait_time: 300ms
+  # ESPHome waits 600 ms between requests by default; the controller needs only a few ms.
+  turnaround_time: 20ms
+
+thessla_airpack:
+  id: airpack
+  modbus_id: modbus_bus
+  address: 10
+  update_interval: 2s       # tryb, intensywność, przepływy, funkcje, alarmy
+  normal_interval: 10s      # temperatury i zegar
+  slow_interval: 60s        # filtry, daty, nastawy bypass, firmware
+  time_id: ha_time          # synchronizacja zegara centrali (data/godzina na panelu)
+
+sensor:
+  - platform: thessla_airpack
+    outside_temperature:
+      name: Temperatura zewnętrzna (TZ1)
+    supply_temperature:
+      name: Temperatura nawiewu (TN1)
+    extract_temperature:
+      name: Temperatura wywiewu (TP)
+    fpx_temperature:
+      name: Temperatura za nagrzewnicą FPX (TZ2)
+    ambient_temperature:
+      name: Temperatura otoczenia (TO)
+    supply_flow:
+      name: Strumień nawiewu
+    extract_flow:
+      name: Strumień wywiewu
+    supply_percentage:
+      name: Intensywność nawiewu
+    extract_percentage:
+      name: Intensywność wywiewu
+    intensity:
+      name: Intensywność wentylacji
+    filter_supply_wear:
+      name: Zużycie filtra nawiewnego
+    filter_extract_wear:
+      name: Zużycie filtra wywiewnego
+    alarm_s_code:
+      name: Kod alarmu S
+  - platform: wifi_signal
+    name: WiFi RSSI
+    update_interval: 60s
+
+binary_sensor:
+  - platform: thessla_airpack
+    online:
+      name: Połączenie z centralą
+    alarm_s:
+      name: Alarm S
+    alarm_e:
+      name: Ostrzeżenie E
+    bypass_open:
+      name: Bypass otwarty
+    fans_powered:
+      name: Wentylatory zasilone
+    gwc_active:
+      name: GWC
+    fpx_active:
+      name: FPX
+    erv_active:
+      name: ERV
+    constant_flow_active:
+      name: Constant Flow
+    hood_input:
+      name: Wejście okap
+    humidistat_input:
+      name: Higrostat
+    air_quality_input:
+      name: Czujnik jakości powietrza
+
+text_sensor:
+  - platform: thessla_airpack
+    special_function:
+      name: Aktywna funkcja
+    bypass_status:
+      name: Status bypass
+    comfort_status:
+      name: Status KOMFORT
+    fpx_stage:
+      name: Tryb FPX
+    firmware_version:
+      name: Firmware centrali
+    serial_number:
+      name: Numer seryjny sterownika
+    controller_clock:
+      name: Zegar centrali
+    filter_type:
+      name: Typ filtrów
+    filter_supply_date:
+      name: Data wymiany filtra nawiewnego
+    filter_extract_date:
+      name: Data wymiany filtra wywiewnego
+
+select:
+  - platform: thessla_airpack
+    operating_mode:
+      name: Tryb pracy
+    season:
+      name: Sezon
+    special_function:
+      name: Funkcja specjalna
+    comfort_mode:
+      name: Tryb EKO-KOMFORT
+    bypass_mode:
+      name: Tryb bypass
+    erv_mode:
+      name: Tryb ERV
+
+number:
+  - platform: thessla_airpack
+    intensity:
+      name: Intensywność
+    manual_intensity:
+      name: Intensywność – tryb manualny
+    supply_temperature_setpoint:
+      name: Temperatura nawiewu – nastawa
+    bypass_min_temperature:
+      name: Bypass – min. temperatura zewnętrzna
+    bypass_heating_temperature:
+      name: Bypass – temperatura grzania
+    bypass_cooling_temperature:
+      name: Bypass – temperatura chłodzenia
+
+switch:
+  - platform: thessla_airpack
+    power:
+      name: Centrala włączona
+    bypass_enabled:
+      name: Bypass dozwolony
+
+button:
+  - platform: thessla_airpack
+    sync_clock:
+      name: Synchronizuj zegar centrali
+    # Zapisuje wymianę filtra, kasuje alarm i wyznacza nowy termin (AirPack4 bez AFC)
+    filter_supply_replaced:
+      name: Filtr nawiewny wymieniony
+    filter_extract_replaced:
+      name: Filtr wywiewny wymieniony
+  - platform: restart
+    name: Restart bramki

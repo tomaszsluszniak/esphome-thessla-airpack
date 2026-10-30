@@ -1,0 +1,134 @@
+# End-to-end test: full firmware on Linux (ESPHome "host" platform) talking to
+# tools/airpack_simulator.py through a pseudo-terminal.
+esphome:
+  name: airpack-host-test
+  on_boot:
+    priority: -100
+    then:
+      - delay: 16s  # first poll on the host platform is slow (see interval note below)
+      - logger.log: "TEST 1: intensity 55 in MANUAL -> single write 4210"
+      - number.set: {id: n_intensity, value: 55}
+      - delay: 3s
+      - logger.log: "TEST 2: operating mode -> Automatyczny (write 4208=0) - measure refresh"
+      - select.set: {id: s_mode, option: Automatyczny}
+      - delay: 3s
+      - logger.log: "TEST 3: intensity 70 in AUTO -> temporary block at 4400"
+      - number.set: {id: n_intensity, value: 70}
+      - delay: 3s
+      - logger.log: "TEST 4: supply temperature 21.5 while TEMPORARY -> block at 4403"
+      - number.set: {id: n_temp, value: 21.5}
+      - delay: 3s
+      - logger.log: "TEST 5: special function Kominek (write 4224=2)"
+      - select.set: {id: s_special, option: Kominek}
+      - delay: 3s
+      - logger.log: "TEST 6: input-only special functions must be refused locally"
+      - select.set: {id: s_special, option: "Wietrzenie (higrostat)"}
+      - select.set: {id: s_special, option: Okap}
+      - delay: 2s
+      - logger.log: "TEST 7: bypass not allowed (write 4320=1)"
+      - switch.turn_off: sw_bypass
+      - delay: 3s
+      - logger.log: "TEST 8: clock sync (block at 0)"
+      - button.press: b_clock
+      - delay: 3s
+      - logger.log: "TEST 9: supply filter replaced (command 0x11 to 8191)"
+      - button.press: b_filter
+      - delay: 3s
+      - logger.log: "TESTS DONE"
+
+host:
+
+logger:
+  level: DEBUG
+  logs:
+    scheduler: INFO
+    component: INFO
+
+time:
+  - platform: host
+    id: host_time
+    timezone: "CET-1CEST,M3.5.0,M10.5.0/3"
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [thessla_airpack]
+
+uart:
+  id: rs485
+  port: /tmp/ttyAIRPACK
+  baud_rate: 9600
+
+modbus:
+  id: modbus_bus
+  uart_id: rs485
+  send_wait_time: 300ms
+  # ESPHome waits 600 ms between requests by default; the controller needs only a few ms.
+  turnaround_time: 20ms
+
+thessla_airpack:
+  id: airpack
+  modbus_id: modbus_bus
+  update_interval: 2s
+  time_id: host_time
+
+sensor:
+  - platform: thessla_airpack
+    outside_temperature: {name: TZ1}
+    supply_temperature: {name: TN1}
+    extract_temperature: {name: TP}
+    fpx_temperature: {name: TZ2}
+    duct_temperature: {name: TN2 absent}
+    ambient_temperature: {name: TO}
+    supply_flow: {name: Supply flow}
+    supply_percentage: {name: Supply percent}
+    intensity: {name: Intensity now}
+    filter_supply_wear: {name: Filter supply wear}
+    alarm_s_code: {name: S code}
+
+binary_sensor:
+  - platform: thessla_airpack
+    online: {name: Online}
+    alarm_s: {name: Alarm S}
+    bypass_open: {name: Bypass open}
+    fans_powered: {name: Fans}
+    hood_input: {name: Hood input}
+
+text_sensor:
+  - platform: thessla_airpack
+    special_function: {name: Special}
+    firmware_version: {name: Firmware}
+    serial_number: {name: Serial}
+    controller_clock: {name: Clock}
+    filter_type: {name: Filter type}
+    filter_supply_date: {name: Filter supply date}
+
+select:
+  - platform: thessla_airpack
+    operating_mode: {name: Mode, id: s_mode}
+    special_function: {name: Special select, id: s_special}
+    season: {name: Season}
+
+number:
+  - platform: thessla_airpack
+    intensity: {name: Intensity, id: n_intensity}
+    supply_temperature_setpoint: {name: Supply temp, id: n_temp}
+    bypass_heating_temperature: {name: Bypass heat}
+
+switch:
+  - platform: thessla_airpack
+    power: {name: Power}
+    bypass_enabled: {name: Bypass allowed, id: sw_bypass}
+
+button:
+  - platform: thessla_airpack
+    sync_clock: {name: Sync clock, id: b_clock}
+    filter_supply_replaced: {name: Filter supply replaced, id: b_filter}
+
+# Test-only: the host UART does not wake the main loop on received bytes (ESP-IDF's does),
+# so keep the loop spinning to get ESP32-like Modbus throughput.
+interval:
+  - interval: 5ms
+    then:
+      - lambda: ""
