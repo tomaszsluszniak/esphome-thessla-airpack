@@ -81,6 +81,7 @@ projektach spotkasz nazwę port AirB.
 | 16–127 | 0x0010 | harmonogramy lato/zima: godziny i [AATT] | BCD / % + T×2 | ✔ |
 | 128–180 | 0x0080 | godziny wietrzenia w harmonogramie | BCD, 0x2400 = wył. | ✔ |
 | 256 / 257 | 0x0100 / 1 | chwilowy strumień nawiewu / wywiewu | m³/h, 65535 = CF nieaktywny | – |
+| 1280 / 1281 | 0x0500 / 1 | napięcie sterujące wentylatorem nawiewu / wywiewu (0–10 V) | × 0,00244 V | – |
 | 4192 | 0x1060 | system FPX uruchomiony | 0/1 | – |
 | 4198 | 0x1066 | tryb FPX | 0 off, 1 FPX1, 2 FPX2 | – |
 | 4208 | 0x1070 | tryb pracy | 0 auto, 1 manual, 2 chwilowy | ✔ |

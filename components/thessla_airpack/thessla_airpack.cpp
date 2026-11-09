@@ -57,6 +57,8 @@ uint8_t ThesslaAirpack::rate_for_(EntityType space, uint16_t a) {
     case EntityType::HOLDING:
       if (a <= 0x0003)
         return RATE_NORMAL;  // clock (minute resolution)
+      if (a == 0x0500 || a == 0x0501)
+        return RATE_NORMAL;  // fan control voltages
       if (a == 0x0100 || a == 0x0101 ||        // measured airflow
           a == 0x1060 || a == 0x1066 ||        // FPX
           (a >= 0x1070 && a <= 0x1075) ||      // mode, season, intensity and temperature setpoints

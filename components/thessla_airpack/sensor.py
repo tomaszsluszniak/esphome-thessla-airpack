@@ -3,12 +3,14 @@ from esphome.components import sensor
 import esphome.config_validation as cv
 from esphome.const import (
     DEVICE_CLASS_TEMPERATURE,
+    DEVICE_CLASS_VOLTAGE,
     ENTITY_CATEGORY_DIAGNOSTIC,
     DEVICE_CLASS_VOLUME_FLOW_RATE,
     STATE_CLASS_MEASUREMENT,
     UNIT_CELSIUS,
     UNIT_CUBIC_METER_PER_HOUR,
     UNIT_PERCENT,
+    UNIT_VOLT,
 )
 
 from . import (
@@ -78,6 +80,23 @@ def _percent(space, address: int, icon: str = "mdi:fan") -> dict:
     }
 
 
+def _fan_voltage(address: int) -> dict:
+    # 0-10 V fan control signal ("PWM"), 12-bit DAC: raw x 10/4095 V.
+    return {
+        "space": HOLDING,
+        "address": address,
+        "scale": 0.00244,
+        "schema": sensor.sensor_schema(
+            ThesslaSensor,
+            unit_of_measurement=UNIT_VOLT,
+            accuracy_decimals=2,
+            device_class=DEVICE_CLASS_VOLTAGE,
+            state_class=STATE_CLASS_MEASUREMENT,
+            icon="mdi:sine-wave",
+        ),
+    }
+
+
 SENSORS = {
     # Temperatures (input registers, signed tenths of a degree)
     "outside_temperature": _temperature(0x0010, "mdi:home-thermometer-outline"),  # TZ1
@@ -93,6 +112,10 @@ SENSORS = {
     "supply_target_flow": _flow(INPUT, 0x0112, None),  # Constant Flow setpoint
     "extract_target_flow": _flow(INPUT, 0x0113, None),
     "supply_percentage": _percent(INPUT, 0x0110),
+    # Fan control voltage. With Constant Flow the unit raises it to hold the airflow, so a rising
+    # supply voltage at unchanged flow means growing resistance on the intake side (e.g. frost).
+    "supply_fan_voltage": _fan_voltage(0x0500),
+    "extract_fan_voltage": _fan_voltage(0x0501),
     "extract_percentage": _percent(INPUT, 0x0111),
     # Filter wear shown on the panel's main screen (fw >= 4.75)
     "filter_supply_wear": _percent(HOLDING, 0x1182, "mdi:air-filter"),

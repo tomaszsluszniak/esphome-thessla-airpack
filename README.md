@@ -37,7 +37,7 @@ Dodaj do manifestu urządzenia ESPHome:
 
 ```yaml
 external_components:
-  - source: github://tomaszsluszniak/esphome-thessla-airpack@v1.0.0
+  - source: github://tomaszsluszniak/esphome-thessla-airpack@v1.1.0
     components: [thessla_airpack]
 ```
 
@@ -105,7 +105,7 @@ Przy kompilacji pojawi się ostrzeżenie, jeśli `turnaround_time` hubu modbus p
 
 | Platforma | Klucze |
 |---|---|
-| `sensor` | `outside_temperature` (TZ1), `supply_temperature` (TN1), `extract_temperature` (TP), `fpx_temperature` (TZ2), `duct_temperature` (TN2), `gwc_temperature` (TZ3), `ambient_temperature` (TO), `supply_flow`, `extract_flow`, `supply_target_flow`, `extract_target_flow`, `supply_percentage`, `extract_percentage`, `intensity`, `filter_supply_wear`, `filter_extract_wear`, `alarm_s_code` |
+| `sensor` | `outside_temperature` (TZ1), `supply_temperature` (TN1), `extract_temperature` (TP), `fpx_temperature` (TZ2), `duct_temperature` (TN2), `gwc_temperature` (TZ3), `ambient_temperature` (TO), `supply_flow`, `extract_flow`, `supply_target_flow`, `extract_target_flow`, `supply_percentage`, `extract_percentage`, `supply_fan_voltage`, `extract_fan_voltage`, `intensity`, `filter_supply_wear`, `filter_extract_wear`, `alarm_s_code` |
 | `binary_sensor` | `online`, `alarm_s`, `alarm_e`, `bypass_open`, `fans_powered`, `heating_cable`, `gwc_active`, `hood_damper`, `fpx_active`, `erv_active`, `constant_flow_active`, `hood_input`, `air_quality_input`, `humidistat_input`, `fireplace_input`, `fire_alarm` |
 | `text_sensor` | `special_function`, `bypass_status`, `comfort_status`, `gwc_status`, `fpx_stage`, `filter_type`, `filter_supply_date`, `filter_extract_date`, `firmware_version`, `serial_number`, `controller_clock` |
 | `select` | `operating_mode`, `season`, `special_function`, `comfort_mode`, `bypass_mode`, `erv_mode` |

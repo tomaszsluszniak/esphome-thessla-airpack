@@ -78,6 +78,8 @@ sensor:
     outside_temperature: {name: TZ1}
     supply_temperature: {name: TN1}
     extract_temperature: {name: TP}
+    supply_fan_voltage: {name: Napiecie nawiewu}
+    extract_fan_voltage: {name: Napiecie wywiewu}
     fpx_temperature: {name: TZ2}
     duct_temperature: {name: TN2 absent}
     ambient_temperature: {name: TO}

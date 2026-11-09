@@ -16,7 +16,7 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: thessla.airpack
-    version: "1.0.0"
+    version: "1.1.0"
 
 esp32:
   board: esp32dev
@@ -24,7 +24,7 @@ esp32:
     type: esp-idf
 
 external_components:
-  - source: github://tomaszsluszniak/esphome-thessla-airpack@v1.0.0
+  - source: github://tomaszsluszniak/esphome-thessla-airpack@v1.1.0
     components: [thessla_airpack]
 
 logger:
@@ -99,6 +99,10 @@ sensor:
       name: Intensywność nawiewu
     extract_percentage:
       name: Intensywność wywiewu
+    supply_fan_voltage:
+      name: Napięcie wentylatora nawiewu
+    extract_fan_voltage:
+      name: Napięcie wentylatora wywiewu
     intensity:
       name: Intensywność wentylacji
     filter_supply_wear:
