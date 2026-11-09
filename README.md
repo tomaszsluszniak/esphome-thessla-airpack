@@ -37,7 +37,7 @@ Dodaj do manifestu urządzenia ESPHome:
 
 ```yaml
 external_components:
-  - source: github://tomaszsluszniak/esphome-thessla-airpack@v1.1.0
+  - source: github://tomaszsluszniak/esphome-thessla-airpack@v1.2.0
     components: [thessla_airpack]
 ```
 
@@ -107,7 +107,8 @@ Przy kompilacji pojawi się ostrzeżenie, jeśli `turnaround_time` hubu modbus p
 |---|---|
 | `sensor` | `outside_temperature` (TZ1), `supply_temperature` (TN1), `extract_temperature` (TP), `fpx_temperature` (TZ2), `duct_temperature` (TN2), `gwc_temperature` (TZ3), `ambient_temperature` (TO), `supply_flow`, `extract_flow`, `supply_target_flow`, `extract_target_flow`, `supply_percentage`, `extract_percentage`, `supply_fan_voltage`, `extract_fan_voltage`, `intensity`, `filter_supply_wear`, `filter_extract_wear`, `alarm_s_code` |
 | `binary_sensor` | `online`, `alarm_s`, `alarm_e`, `bypass_open`, `fans_powered`, `heating_cable`, `gwc_active`, `hood_damper`, `fpx_active`, `erv_active`, `constant_flow_active`, `hood_input`, `air_quality_input`, `humidistat_input`, `fireplace_input`, `fire_alarm` |
-| `text_sensor` | `special_function`, `bypass_status`, `comfort_status`, `gwc_status`, `fpx_stage`, `filter_type`, `filter_supply_date`, `filter_extract_date`, `firmware_version`, `serial_number`, `controller_clock` |
+| `text_sensor` | `special_function`, `bypass_status`, `comfort_status`, `gwc_status`, `fpx_stage`, `filter_type`, `filter_supply_date`, `filter_extract_date`, `firmware_version`, `serial_number`, `controller_clock`, `schedule_summer`, `schedule_winter` |
+| `text` | `schedule_command` |
 | `select` | `operating_mode`, `season`, `special_function`, `comfort_mode`, `bypass_mode`, `erv_mode` |
 | `number` | `intensity`, `manual_intensity`, `supply_temperature_setpoint`, `bypass_min_temperature`, `bypass_heating_temperature`, `bypass_cooling_temperature` |
 | `switch` | `power`, `bypass_enabled`, `gwc_enabled` |
@@ -122,6 +123,26 @@ Zachowanie wymagające uwagi:
 - `button.filter_*_replaced` zapisuje wymianę filtra (polecenia 0x11 / 0x21 do 0x1FFF): kasuje alarm
   i wyznacza nowy termin. Używaj dopiero po faktycznej wymianie.
 - Zegar centrali (0x0000–0x0003) jest zawsze odczytywany i zapisywany jako jeden blok czterech rejestrów.
+
+## Harmonogram trybu AUTO
+
+Edycję harmonogramu (jak w panelu Air++) zapewnia karta
+[thessla-airpack-card](https://github.com/tomaszsluszniak/thessla-airpack-card). Komponent udostępnia jej:
+
+- `schedule_summer` / `schedule_winter` – cały harmonogram sezonu jako surowe rejestry w hex, od poniedziałku:
+  dla każdego dnia 4 godziny startu odcinków `[GGMM]`, 4 nastawy `[AATT]` i godzina wietrzenia `[GGMM]`
+  (9 rejestrów × 4 znaki × 7 dni = 252 znaki). Odczyt co `slow_interval`.
+- `schedule_command` – zapis dnia (lub kilku dni naraz) jednym poleceniem:
+
+  ```
+  <L|Z><dni 1–7> <odc1> <odc2> <odc3> <odc4> <wietrzenie>
+  L12345 06:00/65/22 08:00/30 16:00/40 22:00/25 17:45
+  ```
+
+  Odcinek to `GG:MM/intensywność` lub `GG:MM/intensywność/temperatura`, `-` wyłącza odcinek; odcinek bez
+  temperatury zachowuje zapisaną. Wietrzenie: `GG:MM` lub `-`. Komponent sprawdza zakresy z tabeli producenta
+  (10–100 %, 10–45 °C, rosnące godziny, aktywne odcinki pierwsze) i dopiero wtedy zapisuje. Stan encji pokazuje
+  wynik ostatniego polecenia (`OK: …` albo `Błąd: …`).
 
 ## Podłączenie
 

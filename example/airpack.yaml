@@ -16,7 +16,7 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: thessla.airpack
-    version: "1.1.0"
+    version: "1.2.0"
 
 esp32:
   board: esp32dev
@@ -24,7 +24,7 @@ esp32:
     type: esp-idf
 
 external_components:
-  - source: github://tomaszsluszniak/esphome-thessla-airpack@v1.1.0
+  - source: github://tomaszsluszniak/esphome-thessla-airpack@v1.2.0
     components: [thessla_airpack]
 
 logger:
@@ -164,6 +164,16 @@ text_sensor:
       name: Data wymiany filtra nawiewnego
     filter_extract_date:
       name: Data wymiany filtra wywiewnego
+    # Harmonogram trybu AUTO, edytowany z karty thessla-airpack-card
+    schedule_summer:
+      name: Harmonogram lato
+    schedule_winter:
+      name: Harmonogram zima
+
+text:
+  - platform: thessla_airpack
+    schedule_command:
+      name: Harmonogram – zapis
 
 select:
   - platform: thessla_airpack

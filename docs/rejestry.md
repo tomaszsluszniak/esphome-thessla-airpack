@@ -78,8 +78,12 @@ projektach spotkasz nazwę port AirB.
 | Adres | Hex | Nazwa | Kodowanie | Zapis |
 |---|---|---|---|---|
 | 0–3 | 0x0000 | zegar [RRMM][DDTT][GGmm][sscc] | BCD, TT: 0 = pon. | 4 rejestry naraz |
-| 16–127 | 0x0010 | harmonogramy lato/zima: godziny i [AATT] | BCD / % + T×2 | ✔ |
-| 128–180 | 0x0080 | godziny wietrzenia w harmonogramie | BCD, 0x2400 = wył. | ✔ |
+| 16–43 | 0x0010 | harmonogram LATO: start odcinka, dzień × 4 odcinki (pon. 1–4, wt. 1–4 …) | BCD [GGMM], 0xA200 = odcinek wył. | ✔ |
+| 44–71 | 0x002C | harmonogram ZIMA: start odcinka | j.w. | ✔ |
+| 72–99 | 0x0048 | harmonogram LATO: nastawa odcinka [AATT] | AA = 10–100 %, TT = 20–90 (°C × 2) | ✔ |
+| 100–127 | 0x0064 | harmonogram ZIMA: nastawa odcinka [AATT] | j.w. | ✔ |
+| 128–152 | 0x0080 | LATO: start wietrzenia, co 4 rejestry (pon. … niedz.) | BCD [GGMM], 0x2400 = wył. | ✔ |
+| 156–180 | 0x009C | ZIMA: start wietrzenia, co 4 rejestry | j.w. | ✔ |
 | 256 / 257 | 0x0100 / 1 | chwilowy strumień nawiewu / wywiewu | m³/h, 65535 = CF nieaktywny | – |
 | 1280 / 1281 | 0x0500 / 1 | napięcie sterujące wentylatorem nawiewu / wywiewu (0–10 V) | × 0,00244 V | – |
 | 4192 | 0x1060 | system FPX uruchomiony | 0/1 | – |
@@ -133,5 +137,8 @@ Ręcznie (z panelu, karty lub HA) można ustawić: 0, 2, 7, 10, 11. Okap działa
   `0x1133 ← [2, T×2, 1]` (temperatura nawiewu). Komponent robi to sam: w AUTO zmiana intensywności
   włącza tryb chwilowy, w MANUAL zmienia nastawę 0x1072.
 - **Zegar** – cztery rejestry 0x0000–0x0003 zawsze razem.
+- **Harmonogram dnia** – komponent zapisuje dzień jako FC16 4 startów, FC16 4 nastaw i FC6 wietrzenia.
+  Adresy: start = 0x0010 + sezon×28 + dzień×4 + odcinek, nastawa = 0x0048 + …, wietrzenie = 0x0080 +
+  sezon×28 + dzień×4 (sezon 0 = lato, dzień 0 = poniedziałek).
 - **Wymiana filtrów** (AirPack4 bez AFC) – zapis 0x11 lub 0x21 do 0x1FFF rejestruje wymianę,
   kasuje alarm i wyznacza nowy termin. Dwa filtry to dwa osobne polecenia.

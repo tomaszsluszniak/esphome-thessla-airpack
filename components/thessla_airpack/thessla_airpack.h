@@ -31,6 +31,26 @@ static constexpr uint16_t REG_TEMP_INTENSITY_BLOCK = 0x1130;    // [2, %, 1]
 static constexpr uint16_t REG_TEMP_TEMPERATURE_BLOCK = 0x1133;  // [2, T*2, 1]
 static constexpr uint16_t REG_FILTER_COMMAND = 0x1FFF;          // read: filter type, write: 0x11/0x21 command
 
+// Weekly schedules of AUTO mode: season (0 summer, 1 winter) x day (0 = Monday) x 4 time slots.
+static constexpr uint16_t REG_SCHEDULE_START = 0x0010;    // [GGMM] BCD start of each slot
+static constexpr uint16_t REG_SCHEDULE_SETTING = 0x0048;  // [AATT] intensity % and supply temperature x2
+static constexpr uint16_t REG_SCHEDULE_AIRING = 0x0080;   // [GGMM] BCD airing start, one per day (stride 4)
+static constexpr uint16_t REG_SCHEDULE_END = 0x00B4;
+static constexpr uint16_t SCHEDULE_SEASON_STRIDE = 28;
+static constexpr uint16_t SCHEDULE_SLOT_OFF = 0xA200;
+static constexpr uint16_t SCHEDULE_AIRING_OFF = 0x2400;
+static constexpr uint16_t SCHEDULE_DEFAULT_SETTING = (30 << 8) | 44;  // 30 %, 22 °C
+
+inline uint16_t schedule_start_reg(uint8_t season, uint8_t day, uint8_t slot) {
+  return REG_SCHEDULE_START + season * SCHEDULE_SEASON_STRIDE + day * 4 + slot;
+}
+inline uint16_t schedule_setting_reg(uint8_t season, uint8_t day, uint8_t slot) {
+  return REG_SCHEDULE_SETTING + season * SCHEDULE_SEASON_STRIDE + day * 4 + slot;
+}
+inline uint16_t schedule_airing_reg(uint8_t season, uint8_t day) {
+  return REG_SCHEDULE_AIRING + season * SCHEDULE_SEASON_STRIDE + day * 4;
+}
+
 static constexpr uint8_t MODE_AUTO = 0;
 static constexpr uint8_t MODE_MANUAL = 1;
 static constexpr uint8_t MODE_TEMPORARY = 2;
@@ -95,6 +115,12 @@ class ThesslaAirpack : public PollingComponent, public modbus::ModbusClientDevic
   /// Explicitly start temporary mode with the given intensity.
   void start_temporary_intensity(uint8_t percent);
   void sync_clock();
+  /// Writes one day's schedule to one or more days of a season. Command (space-separated):
+  ///   <L|Z><days 1-7> <slot1> <slot2> <slot3> <slot4> <airing>
+  /// slot: "HH:MM/percent" or "HH:MM/percent/temperature", "-" = slot off; airing: "HH:MM" or "-".
+  /// A slot without temperature keeps the one stored for it. Returns an empty string when the writes
+  /// were queued, otherwise why the command was refused (nothing is written then).
+  std::string set_schedule(const std::string &command);
 
   // ---- ModbusClientDevice ----
   void on_read_registers(EntityType entity_type, uint16_t start_address, std::span<const uint16_t> registers,

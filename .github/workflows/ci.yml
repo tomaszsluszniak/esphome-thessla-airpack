@@ -45,3 +45,8 @@ jobs:
           grep -q "TESTS DONE" firmware.log
           grep -q "FILTER REPLACED: supply" sim.log
           grep -q "BLOCK 4400: temporary mode" sim.log
+          grep -q "SCHEDULE BLOCK 44+4 = 0700 0900 A200 A200" sim.log
+          grep -q "SCHEDULE BLOCK 108+4 = 322B 1E28" sim.log
+          grep -q "SCHEDULE WRITE 164 = 0x1830" sim.log
+          ! grep -q "SCHEDULE BLOCK 16+4" sim.log
+          grep -q "Błąd: godziny odcinków muszą rosnąć" firmware.log

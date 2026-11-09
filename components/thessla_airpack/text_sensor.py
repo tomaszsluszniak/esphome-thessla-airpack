@@ -50,6 +50,21 @@ def _special(kind: str, requests: list, icon: str) -> dict:
     }
 
 
+SCHEDULE_START, SCHEDULE_SETTING, SCHEDULE_AIRING, SEASON_STRIDE = 0x0010, 0x0048, 0x0080, 28
+
+
+def _schedule(season: int) -> dict:
+    offset = season * SEASON_STRIDE
+    spec = _special(
+        "SCHEDULE",
+        [(HOLDING, SCHEDULE_START + offset, 28), (HOLDING, SCHEDULE_SETTING + offset, 28)]
+        + [(HOLDING, SCHEDULE_AIRING + offset + day * 4, 1) for day in range(7)],
+        "mdi:calendar-clock",
+    )
+    spec["season"] = season
+    return spec
+
+
 TEXT_SENSORS = {
     "special_function": _enum(HOLDING, 0x1080, SPECIAL_FUNCTIONS, "mdi:star-four-points"),
     "bypass_status": _enum(HOLDING, 0x10EA, THERMAL_STATE, "mdi:valve"),
@@ -68,6 +83,9 @@ TEXT_SENSORS = {
     "serial_number": _special("SERIAL_NUMBER", [(INPUT, 24, 6)], "mdi:identifier"),
     # The manufacturer requires all four clock registers in one read.
     "controller_clock": _special("CLOCK", [(HOLDING, 0, 4, "atomic")], "mdi:clock-outline"),
+    # Weekly AUTO schedules as raw registers (read by the card): slot starts, slot settings, airing.
+    "schedule_summer": _schedule(0),
+    "schedule_winter": _schedule(1),
 }
 
 CONFIG_SCHEMA = THESSLA_CHILD_SCHEMA.extend(
@@ -81,6 +99,8 @@ async def to_code(config):
             continue
         var = await text_sensor.new_text_sensor(config[key])
         cg.add(var.set_kind(getattr(TextKind, spec["kind"])))
+        if "season" in spec:
+            cg.add(var.set_season(spec["season"]))
         if spec["kind"] == "PACKED_DATE":
             await bind_entity(var, config, spec["space"], spec["address"])
         elif spec["kind"] == "ENUM":

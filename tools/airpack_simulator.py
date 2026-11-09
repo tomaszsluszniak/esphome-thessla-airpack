@@ -11,7 +11,8 @@ or a USB-RS485 adapter at it via `socat`.
 It mimics the controller's documented behaviour that matters to clients:
   * unit address 10, at most 16 registers/bits per request,
   * reads touching an undocumented address fail with exception 0x02,
-  * temporary mode is started only by the 3-register block writes at 4400/4403.
+  * temporary mode is started only by the 3-register block writes at 4400/4403,
+  * weekly schedule writes are checked against the ranges of the manufacturer table.
 """
 
 import os
@@ -49,6 +50,41 @@ HOLDING = {
     4660: 0x3943, 4662: 0x3943,  # filter replacement dates (2028-10-03)
     8191: 4, 8192: 0, 8193: 0,
 }
+
+# Weekly AUTO schedules, factory settings from the manual (Tab. 3 and 4): per day 4 slot starts
+# [GGMM] at 16 + season*28 + day*4, settings [AATT] at 72 + ..., airing start at 128 + ... (stride 4).
+SLOT_OFF, AIRING_OFF = 0xA200, 0x2400
+_FACTORY = {
+    0: ([0x0600, 0x0800, 0x1600, 0x2200], 44, [[65, 30, 40, 25]] * 5 + [[65, 40, 40, 25], [65, 80, 80, 40]]),
+    1: ([0x0600, 0x0800, 0x1600, 0x2300], 40, [[70, 30, 40, 30]] * 7),
+}
+for _season, (_starts, _tt, _percents) in _FACTORY.items():
+    for _day in range(7):
+        _base = _season * 28 + _day * 4
+        for _k in range(4):
+            HOLDING[16 + _base + _k] = _starts[_k]
+            HOLDING[72 + _base + _k] = (_percents[_day][_k] << 8) | _tt
+        HOLDING[128 + _base] = 0x1745
+
+
+def valid_time(value: int, off: int) -> bool:
+    if value == off:
+        return True
+    hh, mm = value >> 8, value & 0xFF
+    digits = [hh >> 4, hh & 0xF, mm >> 4, mm & 0xF]
+    return all(d <= 9 for d in digits) and (hh >> 4) * 10 + (hh & 0xF) <= 23 and (mm >> 4) <= 5
+
+
+def schedule_register_ok(address: int, value: int) -> bool:
+    if 16 <= address < 72:
+        return valid_time(value, SLOT_OFF)
+    if 72 <= address < 128:
+        return 10 <= value >> 8 <= 100 and 20 <= value & 0xFF <= 90
+    if 128 <= address <= 180 and (address - 128) % 4 == 0:
+        return valid_time(value, AIRING_OFF)
+    return False
+
+
 COILS = {5: 0, 9: 0, 10: 1, 11: 1, 12: 0, 13: 0, 14: 0, 15: 0}
 DISCRETE = {i: 0 for i in (0, 1, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15, 18, 19, 21)}
 
@@ -116,6 +152,13 @@ def handle(pdu: bytes) -> bytes:
 
     if fc == 6:
         address, value = int.from_bytes(pdu[1:3], "big"), int.from_bytes(pdu[3:5], "big")
+        if 16 <= address <= 180:
+            if not schedule_register_ok(address, value):
+                log(f"SCHEDULE WRITE {address} = 0x{value:04X}: rejected -> exception 3")
+                return exception(fc, 3)
+            HOLDING[address] = value
+            log(f"SCHEDULE WRITE {address} = 0x{value:04X}")
+            return frame(pdu[:5])
         allowed = WRITABLE.get(address, "missing")
         if allowed == "missing" or (allowed is not None and value not in allowed):
             log(f"WRITE {address} = {value}: rejected -> exception 3")
@@ -140,6 +183,13 @@ def handle(pdu: bytes) -> bytes:
         elif start == 0 and count == 4:
             HOLDING.update({i: v for i, v in enumerate(values)})
             log("BLOCK 0: clock = " + " ".join(f"{v:04X}" for v in values))
+        elif 16 <= start and start + count <= 128:
+            bad = [a for a, v in zip(range(start, start + count), values) if not schedule_register_ok(a, v)]
+            if bad:
+                log(f"SCHEDULE BLOCK {start}+{count}: invalid value at {bad} -> exception 3")
+                return exception(fc, 3)
+            HOLDING.update({start + i: v for i, v in enumerate(values)})
+            log(f"SCHEDULE BLOCK {start}+{count} = " + " ".join(f"{v:04X}" for v in values))
         else:
             log(f"BLOCK {start}+{count} {values}: not a documented command -> exception 2")
             return exception(fc, 2)

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 namespace esphome::thessla_airpack {
 
@@ -331,7 +332,10 @@ void ThesslaAirpack::on_write_multiple_registers(uint16_t start_address, std::sp
   }
   ESP_LOGD(TAG, "Wrote %u registers at 0x%04X", static_cast<unsigned>(registers.size()), start_address);
   // Mirror the temporary-mode command blocks onto the registers they change, so the UI follows at once.
-  if (start_address == REG_TEMP_INTENSITY_BLOCK && registers.size() == 3) {
+  if (start_address >= REG_SCHEDULE_START && start_address <= REG_SCHEDULE_END) {
+    for (size_t i = 0; i < registers.size(); i++)
+      this->store_(start_address + i, registers[i]);
+  } else if (start_address == REG_TEMP_INTENSITY_BLOCK && registers.size() == 3) {
     this->store_(REG_MODE, MODE_TEMPORARY);
     this->store_(REG_TEMP_INTENSITY, registers[1]);
   } else if (start_address == REG_TEMP_TEMPERATURE_BLOCK && registers.size() == 3) {
@@ -419,6 +423,110 @@ void ThesslaAirpack::sync_clock() {
 #else
   ESP_LOGW(TAG, "Clock sync needs a time component");
 #endif
+}
+
+// "HH:MM" -> BCD [GGMM]
+static bool parse_time(const std::string &text, uint16_t &bcd) {
+  unsigned hour, minute;
+  char tail;
+  if (sscanf(text.c_str(), "%u:%u%c", &hour, &minute, &tail) != 2 || hour > 23 || minute > 59)
+    return false;
+  bcd = static_cast<uint16_t>((to_bcd(hour) << 8) | to_bcd(minute));
+  return true;
+}
+
+std::string ThesslaAirpack::set_schedule(const std::string &command) {
+  std::vector<std::string> tokens;
+  size_t pos = 0;
+  while (pos < command.size()) {
+    const size_t end = std::min(command.find(' ', pos), command.size());
+    if (end > pos)
+      tokens.push_back(command.substr(pos, end - pos));
+    pos = end + 1;
+  }
+  if (tokens.size() != 6)
+    return "oczekiwano: <L|Z><dni> <odc1> <odc2> <odc3> <odc4> <wietrzenie>";
+
+  const std::string &target = tokens[0];
+  if (target.size() < 2 || (target[0] != 'L' && target[0] != 'Z'))
+    return "sezon musi być L (lato) lub Z (zima)";
+  const uint8_t season = target[0] == 'L' ? 0 : 1;
+  uint8_t days = 0;  // bit 0 = Monday
+  for (size_t i = 1; i < target.size(); i++) {
+    if (target[i] < '1' || target[i] > '7')
+      return "dni to cyfry 1 (pon.) - 7 (niedz.)";
+    days |= 1 << (target[i] - '1');
+  }
+
+  struct Slot {
+    bool on{false};
+    uint16_t start{SCHEDULE_SLOT_OFF};
+    uint8_t percent{0};
+    int temperature{-1};  // TT (x2), -1 = keep the stored one
+  };
+  Slot slots[4];
+  uint16_t previous = 0;
+  bool seen_off = false;
+  for (uint8_t k = 0; k < 4; k++) {
+    std::string token = tokens[1 + k];
+    if (token == "-") {
+      seen_off = true;
+      continue;
+    }
+    if (seen_off)
+      return "aktywne odcinki muszą być pierwsze";
+    std::replace(token.begin(), token.end(), ',', '.');
+    const size_t slash = token.find('/');
+    if (slash == std::string::npos)
+      return "odcinek " + to_string(k + 1) + ": oczekiwano HH:MM/%[/°C]";
+    Slot &slot = slots[k];
+    if (!parse_time(token.substr(0, slash), slot.start))
+      return "odcinek " + to_string(k + 1) + ": zła godzina";
+    unsigned percent;
+    float celsius;
+    const std::string rest = token.substr(slash + 1);
+    const int fields = sscanf(rest.c_str(), "%u/%f", &percent, &celsius);
+    if (fields < 1 || percent < 10 || percent > 100)
+      return "odcinek " + to_string(k + 1) + ": intensywność 10-100 %";
+    slot.percent = static_cast<uint8_t>(percent);
+    if (fields == 2) {
+      if (celsius < 10.0f || celsius > 45.0f)
+        return "odcinek " + to_string(k + 1) + ": temperatura 10-45 °C";
+      slot.temperature = static_cast<int>(lroundf(celsius * 2.0f));
+    }
+    if (k > 0 && slot.start <= previous)
+      return "godziny odcinków muszą rosnąć";
+    previous = slot.start;
+    slot.on = true;
+  }
+  if (!slots[0].on)
+    return "potrzebny co najmniej jeden odcinek";
+
+  uint16_t airing = SCHEDULE_AIRING_OFF;
+  if (tokens[5] != "-" && !parse_time(tokens[5], airing))
+    return "zła godzina wietrzenia";
+
+  for (uint8_t day = 0; day < 7; day++) {
+    if (!(days & (1 << day)))
+      continue;
+    uint16_t starts[4], settings[4];
+    for (uint8_t k = 0; k < 4; k++) {
+      const uint16_t stored =
+          this->get(EntityType::HOLDING, schedule_setting_reg(season, day, k)).value_or(SCHEDULE_DEFAULT_SETTING);
+      starts[k] = slots[k].start;
+      if (!slots[k].on) {
+        settings[k] = stored;  // an unused slot keeps whatever it held
+        continue;
+      }
+      const int tt = slots[k].temperature >= 0 ? slots[k].temperature : (stored & 0xFF);
+      settings[k] = static_cast<uint16_t>((slots[k].percent << 8) | std::clamp(tt, 20, 90));
+    }
+    ESP_LOGI(TAG, "Schedule %s day %u: writing slots and airing", season == 0 ? "summer" : "winter", day + 1);
+    this->write_registers(schedule_start_reg(season, day, 0), starts);
+    this->write_registers(schedule_setting_reg(season, day, 0), settings);
+    this->write_register(schedule_airing_reg(season, day), airing);
+  }
+  return {};
 }
 
 }  // namespace esphome::thessla_airpack

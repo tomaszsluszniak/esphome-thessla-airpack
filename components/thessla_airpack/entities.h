@@ -27,6 +27,9 @@
 #ifdef USE_BUTTON
 #include "esphome/components/button/button.h"
 #endif
+#ifdef USE_TEXT
+#include "esphome/components/text/text.h"
+#endif
 
 #include <cmath>
 #include <cstdio>
@@ -159,11 +162,13 @@ class ThesslaBinarySensor : public binary_sensor::BinarySensor, public ThesslaBo
 
 // ---------------------------------------------------------------------------
 #ifdef USE_TEXT_SENSOR
-enum class TextKind : uint8_t { ENUM, FIRMWARE, SERIAL_NUMBER, CLOCK, PACKED_DATE };
+enum class TextKind : uint8_t { ENUM, FIRMWARE, SERIAL_NUMBER, CLOCK, PACKED_DATE, SCHEDULE };
 
 class ThesslaTextSensor : public text_sensor::TextSensor, public ThesslaBound, public ThesslaOptions {
  public:
   void set_kind(TextKind kind) { this->kind_ = kind; }
+  /// For TextKind::SCHEDULE: 0 summer, 1 winter.
+  void set_season(uint8_t season) { this->season_ = season; }
 
   void refresh() override {
     std::string value;
@@ -182,6 +187,9 @@ class ThesslaTextSensor : public text_sensor::TextSensor, public ThesslaBound, p
         break;
       case TextKind::PACKED_DATE:
         value = this->packed_date_();
+        break;
+      case TextKind::SCHEDULE:
+        value = this->schedule_();
         break;
     }
     if (value.empty() || (this->has_state() && value == this->get_state()))
@@ -262,7 +270,57 @@ class ThesslaTextSensor : public text_sensor::TextSensor, public ThesslaBound, p
     return buf;
   }
 
+  // A whole season as raw registers in hex, Monday first: per day 4 slot starts [GGMM], 4 slot settings
+  // [AATT] and the airing start [GGMM] - 7 x 9 x 4 = 252 characters, within Home Assistant's 255.
+  std::string schedule_() const {
+    std::string out;
+    out.reserve(252);
+    char buf[5];
+    for (uint8_t day = 0; day < 7; day++) {
+      uint16_t regs[9];
+      for (uint8_t k = 0; k < 4; k++) {
+        auto start = this->parent_->get(EntityType::HOLDING, schedule_start_reg(this->season_, day, k));
+        auto setting = this->parent_->get(EntityType::HOLDING, schedule_setting_reg(this->season_, day, k));
+        if (!start.has_value() || !setting.has_value())
+          return {};
+        regs[k] = *start;
+        regs[4 + k] = *setting;
+      }
+      auto airing = this->parent_->get(EntityType::HOLDING, schedule_airing_reg(this->season_, day));
+      if (!airing.has_value())
+        return {};
+      regs[8] = *airing;
+      for (uint16_t reg : regs) {
+        snprintf(buf, sizeof(buf), "%04X", reg);
+        out += buf;
+      }
+    }
+    return out;
+  }
+
   TextKind kind_{TextKind::ENUM};
+  uint8_t season_{0};
+};
+#endif
+
+// ---------------------------------------------------------------------------
+#ifdef USE_TEXT
+/// Write-only command input for the weekly schedule (see ThesslaAirpack::set_schedule). Its state shows
+/// the outcome of the last command.
+class ThesslaScheduleCommand : public text::Text, public ThesslaBound {
+ public:
+  void refresh() override {}
+
+ protected:
+  void control(const std::string &value) override {
+    const std::string error = this->parent_->set_schedule(value);
+    if (error.empty()) {
+      this->publish_state("OK: " + value);
+    } else {
+      ESP_LOGW("thessla_airpack", "Schedule command '%s' refused: %s", value.c_str(), error.c_str());
+      this->publish_state("Błąd: " + error);
+    }
+  }
 };
 #endif
 
